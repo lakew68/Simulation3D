@@ -1,20 +1,23 @@
 using UnityEngine;
 using Unity.Mathematics;
 using Random=UnityEngine.Random;
+using System.Linq.Expressions;
 
 public class Simulation3D : MonoBehaviour
 {
-    public float radius;
-    public Vector3 position;
-    public Vector3[] velocities;
-    public Vector3 velocity;
-    public Material sphereMaterial;
-    public GameObject[] spheres;
-    public GameObject sphere;
-    public int numSpheres;
-    public float maxVel;
-    public Vector3 minBounds;
-    public Vector3 maxBounds;
+    float radius;
+    float mass;
+    float[] masses;
+    Vector3 position;
+    Vector3[] velocities;
+    Vector3 velocity;
+    Material sphereMaterial;
+    GameObject[] spheres;
+    GameObject sphere;
+    int numSpheres;
+    float maxVel;
+    Vector3 minBounds;
+    Vector3 maxBounds;
 
     void Start()
     {
@@ -22,6 +25,7 @@ public class Simulation3D : MonoBehaviour
         radius = 0.05f;
         maxVel = 1.0f;
         velocities = new Vector3[numSpheres];
+        masses = new float[numSpheres];
         spheres = new GameObject[numSpheres];
         sphereMaterial = new Material(Shader.Find("Standard"));
         sphereMaterial.color = Color.red;
@@ -36,10 +40,13 @@ public class Simulation3D : MonoBehaviour
             sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.position = position;
             velocities[i] = velocity;
+            masses[i] = mass;
             sphere.transform.localScale = 2 * radius * Vector3.one; // radius to diameter
             sphere.GetComponent<Renderer>().material = sphereMaterial;
             spheres[i] = sphere;
         }
+        
+        Gravity g = new Gravity(spheres, masses, minBounds, maxBounds);
         
         
     }
