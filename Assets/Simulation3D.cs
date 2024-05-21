@@ -27,7 +27,7 @@ public class Simulation3D : MonoBehaviour
     {
         numSpheres = 150;
         radius = 0.05f;
-        mass = 3e-6;
+        mass = 1e-1;
         maxVel = 0.3f;
         velocities = new Vector3[numSpheres];
         masses = new double[numSpheres];
@@ -39,7 +39,7 @@ public class Simulation3D : MonoBehaviour
 
         for (int i = 0; i < numSpheres; i++)
         {
-            position = new Vector3((float)Random.Range(minBounds.x, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(minBounds.z, maxBounds.z)*Constants.initScale);
+            position = new Vector3((float)Random.Range(minBounds.x, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(0.0f,0.0f)*Constants.initScale+ (minBounds.z+ maxBounds.z) * 0.5f);
             velocity = new Vector3((float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel));
             sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.position = position;

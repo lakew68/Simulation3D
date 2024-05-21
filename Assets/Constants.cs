@@ -8,6 +8,6 @@ public static class Constants
     // solar mass pc / yr^2 = G * solar mass^2 / pc^2
     // G units are pc^3 / yr^2 / Solar mass
     public static double G_in_units = 6.67e-8 / UnitLength_in_CGS / UnitLength_in_CGS / UnitLength_in_CGS * UnitTime_in_CGS * UnitTime_in_CGS * UnitMass_in_CGS;
-    public static double softeningScale = 0.005;
-    public static float initScale = 0.1f;
+    public static double softeningScale = 0.001;
+    public static float initScale = 0.5f;
 }

@@ -325,6 +325,7 @@ public class Gravity
             gameObjects[i].transform.position = positions[i] + 35.0f / 384.0f * k1_pos[i] + 500.0f / 1113.0f * k3_pos[i] + 125.0f / 192.0f * k4_pos[i] - 2187.0f / 6784.0f * k5_pos[i] + 11.0f / 84.0f * k6_pos[i] + 35.0f / 384.0f * k8_pos[i];
             velocities[i] += 35.0f / 384.0f * k1_vel[i] + 500.0f / 1113.0f * k3_vel[i] + 125.0f / 192.0f * k4_vel[i] - 2187.0f / 6784.0f * k5_vel[i] + 11.0f / 84.0f * k6_vel[i] + 35.0f / 384.0f * k8_vel[i];
         }
+        BuildTree(root, new List<int>(Enumerable.Range(0, gameObjects.Length)));
     }
     public void CalculateAccelerations()
     {
