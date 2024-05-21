@@ -25,10 +25,10 @@ public class Simulation3D : MonoBehaviour
 
     void Start()
     {
-        numSpheres = 2;
+        numSpheres = 150;
         radius = 0.05f;
-        mass = 1.0;
-        maxVel = 0.0f;
+        mass = 3e-6;
+        maxVel = 0.3f;
         velocities = new Vector3[numSpheres];
         masses = new double[numSpheres];
         spheres = new GameObject[numSpheres];
@@ -39,7 +39,7 @@ public class Simulation3D : MonoBehaviour
 
         for (int i = 0; i < numSpheres; i++)
         {
-            position = new Vector3((float)Random.Range(0.0f, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(minBounds.z, maxBounds.z)*Constants.initScale);
+            position = new Vector3((float)Random.Range(minBounds.x, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(minBounds.z, maxBounds.z)*Constants.initScale);
             velocity = new Vector3((float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel));
             sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.position = position;
@@ -49,9 +49,13 @@ public class Simulation3D : MonoBehaviour
             sphere.GetComponent<Renderer>().material = sphereMaterial;
             spheres[i] = sphere;
         }
-        masses[1] = 3e-6;
-        spheres[0].transform.position = new Vector3(0.0f,0.0f,0.0f);
-        spheres[1].transform.position = new Vector3(1.0f,0.0f,0.0f);
+        masses[0] = 1.0;
+        spheres[0].transform.position = new Vector3(0.0f,0.0f,(minBounds.z+ maxBounds.z) * 0.5f);
+        velocities[0] = new Vector3(0.0f,0.0f,0.0f);
+        Material SunMaterial = new Material(Shader.Find("Standard"));
+        SunMaterial.color = Color.yellow;
+        spheres[0].GetComponent<Renderer>().material = SunMaterial;
+        spheres[1].transform.position = new Vector3(1.0f,0.0f,(minBounds.z+ maxBounds.z) * 0.5f);
         velocities[1] = new Vector3(0.0f,0.17f,0.0f);
         g = new Gravity(spheres, masses, minBounds, maxBounds);
     }
@@ -131,9 +135,8 @@ public class Simulation3D : MonoBehaviour
         // Calculate min and max bounds based on the camera's viewport
         minBounds = cam.ViewportToWorldPoint(new Vector3(0, 0, cam.nearClipPlane));
         maxBounds = cam.ViewportToWorldPoint(new Vector3(1, 1, cam.nearClipPlane));
-
-        // Adjust bounds to account for the depth of the objects (spheres)
-        minBounds.z = cam.transform.position.z + cam.nearClipPlane;
-        maxBounds.z = cam.transform.position.z + cam.farClipPlane;
+        float camCenter = (cam.nearClipPlane + cam.farClipPlane) * 0.5f;
+        minBounds.z = minBounds.x + camCenter;
+        maxBounds.z = maxBounds.x + camCenter;
     }
 }

@@ -328,6 +328,60 @@ public class Gravity
     }
     public void CalculateAccelerations()
     {
+        for (int i = 0; i < gameObjects.Length; i ++)
+        {
+            LastAccelerations[i] = GravAccelerations[i];
+            GravAccelerations[i] = CalculateAccelerationForParticle(i, root);
+        }
+    }
+    private Vector3 CalculateAccelerationForParticle(int particleIndex, OctreeNode node)
+    {
+        Vector3 acceleration = Vector3.zero;
+        Vector3 deltaR = node.CenterOfMass - gameObjects[particleIndex].transform.position;
+        float distanceSq = deltaR.sqrMagnitude;
+        
+        // Softening
+        distanceSq += (float)(softeningScale * softeningScale);
+
+        if (node.ParticleIndices.Count == 1 && node.ParticleIndices[0] == particleIndex)
+        {
+            // Skip self-interaction
+            return acceleration;
+        }
+
+        if (node.ParticleIndices.Count > 0)
+        {
+
+            acceleration += (float)(G * node.TotalMass / (distanceSq * Mathf.Sqrt(distanceSq))) * deltaR;
+        }
+        else
+        {
+            float nodeRadius = (node.BoundsMax - node.BoundsMin).magnitude / 2f;
+
+            // Opening criterion
+            float openingCriterion = (float)(G * node.TotalMass * nodeRadius*nodeRadius / (distanceSq*distanceSq));
+            if (openingCriterion <= 0.0005f * LastAccelerations[particleIndex].magnitude)
+            {
+                // Use monopole approximation
+                acceleration += (float)(G * node.TotalMass / (distanceSq * Mathf.Sqrt(distanceSq))) * deltaR;
+            }
+            else
+            {
+                // Recursively calculate acceleration from children nodes
+                for (int i = 0; i < 8; i++)
+                {
+                    if (node.Children[i] != null)
+                    {
+                        acceleration += CalculateAccelerationForParticle(particleIndex, node.Children[i]);
+                    }
+                }
+            }
+        }
+
+        return acceleration;
+    }
+    public void CalculateAccelerationsNoTree()
+    {
         Vector3 deltaRVector;
         float deltaR;
         LastAccelerations[0] = GravAccelerations[0];
