@@ -4,6 +4,7 @@ using Random = UnityEngine.Random;
 using System.Linq.Expressions;
 using System;
 using Unity.Burst.CompilerServices;
+using UnityEditor.ShaderGraph.Internal;
 
 public class Simulation3D : MonoBehaviour
 {
@@ -24,10 +25,10 @@ public class Simulation3D : MonoBehaviour
 
     void Start()
     {
-        numSpheres = 150;
+        numSpheres = 2;
         radius = 0.05f;
-        mass = 1000.0;
-        maxVel = 0.001f;
+        mass = 1.0;
+        maxVel = 0.0f;
         velocities = new Vector3[numSpheres];
         masses = new double[numSpheres];
         spheres = new GameObject[numSpheres];
@@ -38,7 +39,7 @@ public class Simulation3D : MonoBehaviour
 
         for (int i = 0; i < numSpheres; i++)
         {
-            position = new Vector3((float)Random.Range(minBounds.x, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(minBounds.z, maxBounds.z)*Constants.initScale);
+            position = new Vector3((float)Random.Range(0.0f, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(minBounds.z, maxBounds.z)*Constants.initScale);
             velocity = new Vector3((float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel));
             sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.position = position;
@@ -48,7 +49,10 @@ public class Simulation3D : MonoBehaviour
             sphere.GetComponent<Renderer>().material = sphereMaterial;
             spheres[i] = sphere;
         }
-
+        masses[1] = 3e-6;
+        spheres[0].transform.position = new Vector3(0.0f,0.0f,0.0f);
+        spheres[1].transform.position = new Vector3(1.0f,0.0f,0.0f);
+        velocities[1] = new Vector3(0.0f,0.17f,0.0f);
         g = new Gravity(spheres, masses, minBounds, maxBounds);
     }
 
@@ -120,7 +124,7 @@ public class Simulation3D : MonoBehaviour
 
         if (cam == null)
         {
-            Debug.LogError("Main camera not found. Please tag the main camera as 'MainCamera'.");
+            Debug.LogError("Main camera not found. Please tag the main camera as 'Main Camera'.");
             return;
         }
 

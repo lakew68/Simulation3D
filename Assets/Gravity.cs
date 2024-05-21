@@ -1,8 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.Burst.CompilerServices;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class Gravity
@@ -46,82 +43,85 @@ public class Gravity
             LastAccelerations[i] = new Vector3(0.0f,0.0f,0.0f);
         }
 
-        root = new OctreeNode(boundsMin, boundsMax);
-
         CalculateInitialAccelerations();
-        // BuildTree(root, gameObjects);
+
+        root = new OctreeNode(boundsMin, boundsMax);
+        BuildTree(root, new List<int>(Enumerable.Range(0, gameObjects.Length)));
     }
 
-    private void BuildTree(OctreeNode node, GameObject[] gameObjects)
+    private void BuildTree(OctreeNode node, List<int> indices)
     {
-        if (gameObjects.Length == 1)
+        if (indices.Count == 1)
         {
-            // Base case: if only one game object remains, set properties and return
-            int particleIndex = System.Array.IndexOf(this.gameObjects, gameObjects[0]);
-            node.ParticleIndices.Add(particleIndex);
-            node.CenterOfMass = gameObjects[0].transform.position;
-            node.TotalMass = masses[particleIndex]; // Use the mass of the particle
+            // Leaf node
+            node.ParticleIndices.Add(indices[0]);
+            node.CenterOfMass = gameObjects[indices[0]].transform.position;
+            node.TotalMass = masses[indices[0]];
             return;
         }
 
-        // Recursive case: continue dividing the space and building the tree
-        Vector3 center = (node.BoundsMin + node.BoundsMax) * 0.5f;
-        List<GameObject>[] octants = new List<GameObject>[8];
-
-        // Ensure there's at least one object in each octant
-        bool hasObjects = false;
-        foreach (GameObject obj in gameObjects)
+        // Non-leaf node, compute the center of mass and total mass
+        Vector3 centerOfMass = Vector3.zero;
+        double totalMass = 0;
+        foreach (int index in indices)
         {
-            int octant = GetOctant(center, obj.transform.position);
-            if (octants[octant] == null)
-            {
-                octants[octant] = new List<GameObject>();
-            }
-            octants[octant].Add(obj);
-            hasObjects = true;
+            centerOfMass += gameObjects[index].transform.position * (float)masses[index];
+            totalMass += masses[index];
         }
+        centerOfMass /= (float)totalMass;
 
-        // If no objects are found in any octant, terminate recursion
-        if (!hasObjects)
-        {
-            return;
-        }
-        node.TotalMass = 0.0;
-        node.CenterOfMass = Vector3.zero;
+        node.CenterOfMass = centerOfMass;
+        node.TotalMass = totalMass;
 
+        // Divide particles into octants
+        Vector3 halfSize = (node.BoundsMax - node.BoundsMin) * 0.5f;
+        Vector3 nodeCenter = node.CenterOfMass;
+
+        List<int>[] octantIndices = new List<int>[8];
         for (int i = 0; i < 8; i++)
         {
-            if (octants[i].Count > 0)
-            {
-                Vector3 newMin = node.BoundsMin;
-                Vector3 newMax = center;
-
-                if ((i & 1) != 0) newMin.x = center.x; else newMax.x = center.x;
-                if ((i & 2) != 0) newMin.y = center.y; else newMax.y = center.y;
-                if ((i & 4) != 0) newMin.z = center.z; else newMax.z = center.z;
-
-                node.Children[i] = new OctreeNode(newMin, newMax);
-                BuildTree(node.Children[i], octants[i].ToArray());
-
-                node.TotalMass += node.Children[i].TotalMass;
-                node.CenterOfMass += node.Children[i].CenterOfMass * (float)node.Children[i].TotalMass;
-            }
+            octantIndices[i] = new List<int>();
         }
 
-        if (node.TotalMass > 0)
+        foreach (int index in indices)
         {
-            node.CenterOfMass /= (float)node.TotalMass;
+            int octant = GetOctant(nodeCenter, gameObjects[index].transform.position);
+            octantIndices[octant].Add(index);
+        }
+
+        // Create children nodes
+        for (int i = 0; i < 8; i++)
+        {
+            if (octantIndices[i].Count == 0) continue;
+
+            Vector3 offset = GetOctantOffset(i, halfSize);
+
+            Vector3 childCenter = nodeCenter + offset;
+            Vector3 childBoundsMin = childCenter - halfSize;
+            Vector3 childBoundsMax = childCenter + halfSize;
+            node.Children[i] = new OctreeNode(childBoundsMin, childBoundsMax);
+
+            BuildTree(node.Children[i], octantIndices[i]);
         }
     }
 
     private int GetOctant(Vector3 center, Vector3 position)
     {
         int octant = 0;
-        if (position.x >= center.x) octant |= 1;
+        if (position.x >= center.x) octant |= 4;
         if (position.y >= center.y) octant |= 2;
-        if (position.z >= center.z) octant |= 4;
+        if (position.z >= center.z) octant |= 1;
         return octant;
     }
+
+    private Vector3 GetOctantOffset(int octant, Vector3 halfSize)
+    {
+        return new Vector3(
+            ((octant & 4) == 0 ? -1 : 1) * halfSize.x,
+            ((octant & 2) == 0 ? -1 : 1) * halfSize.y,
+            ((octant & 1) == 0 ? -1 : 1) * halfSize.z);
+    }
+
     public void DoEuler(Vector3[] velocities,float dt)
     {
         CalculateAccelerations();
@@ -206,7 +206,6 @@ public class Gravity
     {
         int n = gameObjects.Length;
         Vector3[] positions = new Vector3[n];
-        Vector3[] initialVelocities = new Vector3[n];
         Vector3[] k1_pos = new Vector3[n];
         Vector3[] k1_vel = new Vector3[n];
         Vector3[] k2_pos = new Vector3[n];
@@ -221,104 +220,110 @@ public class Gravity
         Vector3[] k6_vel = new Vector3[n];
         Vector3[] k7_pos = new Vector3[n];
         Vector3[] k7_vel = new Vector3[n];
+        Vector3[] k8_pos = new Vector3[n];
+        Vector3[] k8_vel = new Vector3[n];
 
-        // Save initial positions and velocities
+        // Save initial positions
         for (int i = 0; i < n; i++)
         {
             positions[i] = gameObjects[i].transform.position;
-            initialVelocities[i] = velocities[i];
         }
+
         // Calculate k1
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k1_pos[i] = initialVelocities[i] * dt;
+            k1_pos[i] = velocities[i] * dt;
             k1_vel[i] = GravAccelerations[i] * dt;
         }
 
         // Calculate k2
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + 0.2f * k1_pos[i];
-            velocities[i] = initialVelocities[i] + 0.2f * k1_vel[i];
+            gameObjects[i].transform.position = positions[i] + 1.0f / 5.0f * k1_pos[i];
         }
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k2_pos[i] = velocities[i] * dt;
+            k2_pos[i] = (velocities[i] + 1.0f / 5.0f * k1_vel[i]) * dt;
             k2_vel[i] = GravAccelerations[i] * dt;
         }
 
         // Calculate k3
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + (3.0f / 40.0f) * k1_pos[i] + (9.0f / 40.0f) * k2_pos[i];
-            velocities[i] = initialVelocities[i] + (3.0f / 40.0f) * k1_vel[i] + (9.0f / 40.0f) * k2_vel[i];
+            gameObjects[i].transform.position = positions[i] + 3.0f / 40.0f * k1_pos[i] + 9.0f / 40.0f * k2_pos[i];
         }
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k3_pos[i] = velocities[i] * dt;
+            k3_pos[i] = (velocities[i] + 3.0f / 40.0f * k1_vel[i] + 9.0f / 40.0f * k2_vel[i]) * dt;
             k3_vel[i] = GravAccelerations[i] * dt;
         }
 
         // Calculate k4
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + (44.0f / 45.0f) * k1_pos[i] - (56.0f / 15.0f) * k2_pos[i] + (32.0f / 9.0f) * k3_pos[i];
-            velocities[i] = initialVelocities[i] + (44.0f / 45.0f) * k1_vel[i] - (56.0f / 15.0f) * k2_vel[i] + (32.0f / 9.0f) * k3_vel[i];
+            gameObjects[i].transform.position = positions[i] + 44.0f / 45.0f * k1_pos[i] - 56.0f / 15.0f * k2_pos[i] + 32.0f / 9.0f * k3_pos[i];
         }
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k4_pos[i] = velocities[i] * dt;
+            k4_pos[i] = (velocities[i] + 44.0f / 45.0f * k1_vel[i] - 56.0f / 15.0f * k2_vel[i] + 32.0f / 9.0f * k3_vel[i]) * dt;
             k4_vel[i] = GravAccelerations[i] * dt;
         }
 
         // Calculate k5
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + (19372.0f / 6561.0f) * k1_pos[i] - (25360.0f / 2187.0f) * k2_pos[i] + (64448.0f / 6561.0f) * k3_pos[i] - (212.0f / 729.0f) * k4_pos[i];
-            velocities[i] = initialVelocities[i] + (19372.0f / 6561.0f) * k1_vel[i] - (25360.0f / 2187.0f) * k2_vel[i] + (64448.0f / 6561.0f) * k3_vel[i] - (212.0f / 729.0f) * k4_vel[i];
+            gameObjects[i].transform.position = positions[i] + 19372.0f / 6561.0f * k1_pos[i] - 25360.0f / 2187.0f * k2_pos[i] + 64448.0f / 6561.0f * k3_pos[i] - 212.0f / 729.0f * k4_pos[i];
         }
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k5_pos[i] = velocities[i] * dt;
+            k5_pos[i] = (velocities[i] + 19372.0f / 6561.0f * k1_vel[i] - 25360.0f / 2187.0f * k2_vel[i] + 64448.0f / 6561.0f * k3_vel[i] - 212.0f / 729.0f * k4_vel[i]) * dt;
             k5_vel[i] = GravAccelerations[i] * dt;
         }
 
         // Calculate k6
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + (9017.0f / 3168.0f) * k1_pos[i] - (355.0f / 33.0f) * k2_pos[i] + (46732.0f / 5247.0f) * k3_pos[i] + (49.0f / 176.0f) * k4_pos[i] - (5103.0f / 18656.0f) * k5_pos[i];
-            velocities[i] = initialVelocities[i] + (9017.0f / 3168.0f) * k1_vel[i] - (355.0f / 33.0f) * k2_vel[i] + (46732.0f / 5247.0f) * k3_vel[i] + (49.0f / 176.0f) * k4_vel[i] - (5103.0f / 18656.0f) * k5_vel[i];
+            gameObjects[i].transform.position = positions[i] + 9017.0f / 3168.0f * k1_pos[i] - 355.0f / 33.0f * k2_pos[i] + 46732.0f / 5247.0f * k3_pos[i] + 49.0f / 176.0f * k4_pos[i] - 5103.0f / 18656.0f * k5_pos[i];
         }
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k6_pos[i] = velocities[i] * dt;
+            k6_pos[i] = (velocities[i] + 9017.0f / 3168.0f * k1_vel[i] - 355.0f / 33.0f * k2_vel[i] + 46732.0f / 5247.0f * k3_vel[i] + 49.0f / 176.0f * k4_vel[i] - 5103.0f / 18656.0f * k5_vel[i]) * dt;
             k6_vel[i] = GravAccelerations[i] * dt;
         }
-
         // Calculate k7
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + (35.0f / 384.0f) * k1_pos[i] + (500.0f / 1113.0f) * k3_pos[i] + (125.0f / 192.0f) * k4_pos[i] - (2187.0f / 6784.0f) * k5_pos[i] + (11.0f / 84.0f) * k6_pos[i];
-            velocities[i] = initialVelocities[i] + (35.0f / 384.0f) * k1_vel[i] + (500.0f / 1113.0f) * k3_vel[i] + (125.0f / 192.0f) * k4_vel[i] - (2187.0f / 6784.0f) * k5_vel[i] + (11.0f / 84.0f) * k6_vel[i];
+            gameObjects[i].transform.position = positions[i] + 35.0f / 384.0f * k1_pos[i] + 0.0f * k2_pos[i] + 500.0f / 1113.0f * k3_pos[i] + 125.0f / 192.0f * k4_pos[i] - 2187.0f / 6784.0f * k5_pos[i] + 11.0f / 84.0f * k6_pos[i];
         }
         CalculateAccelerations();
         for (int i = 0; i < n; i++)
         {
-            k7_pos[i] = velocities[i] * dt;
+            k7_pos[i] = (velocities[i] + 35.0f / 384.0f * k1_vel[i] + 0.0f * k2_vel[i] + 500.0f / 1113.0f * k3_vel[i] + 125.0f / 192.0f * k4_vel[i] - 2187.0f / 6784.0f * k5_vel[i] + 11.0f / 84.0f * k6_vel[i]) * dt;
             k7_vel[i] = GravAccelerations[i] * dt;
         }
-
-        // Update positions and velocities using the weighted sum of k1 to k6
+        // Calculate k8
         for (int i = 0; i < n; i++)
         {
-            gameObjects[i].transform.position = positions[i] + (35.0f / 384.0f) * k1_pos[i] + (500.0f / 1113.0f) * k3_pos[i] + (125.0f / 192.0f) * k4_pos[i] - (2187.0f / 6784.0f) * k5_pos[i] + (11.0f / 84.0f) * k6_pos[i];
-            velocities[i] += (35.0f / 384.0f) * k1_vel[i] + (500.0f / 1113.0f) * k3_vel[i] + (125.0f / 192.0f) * k4_vel[i] - (2187.0f / 6784.0f) * k5_vel[i] + (11.0f / 84.0f) * k6_vel[i];
+            gameObjects[i].transform.position = positions[i] - 5103.0f / 18656.0f * k1_pos[i] + 0.0f * k2_pos[i] - 2187.0f / 6784.0f * k3_pos[i] + 8640.0f / 18656.0f * k4_pos[i] - 1728.0f / 6784.0f * k5_pos[i] + 6561.0f / 18656.0f * k6_pos[i] + 1.0f / 16.0f * k7_pos[i];
+        }
+        CalculateAccelerations();
+        for (int i = 0; i < n; i++)
+        {
+            k8_pos[i] = (velocities[i] - 5103.0f / 18656.0f * k1_vel[i] + 0.0f * k2_vel[i] - 2187.0f / 6784.0f * k3_vel[i] + 8640.0f / 18656.0f * k4_vel[i] - 1728.0f / 6784.0f * k5_vel[i] + 6561.0f / 18656.0f * k6_vel[i] + 1.0f / 16.0f * k7_vel[i] + 35.0f / 384.0f * k8_pos[i]) * dt;
+            k8_vel[i] = GravAccelerations[i] * dt;
+        }
+
+        // Update positions and velocities
+        for (int i = 0; i < n; i++)
+        {
+            gameObjects[i].transform.position = positions[i] + 35.0f / 384.0f * k1_pos[i] + 500.0f / 1113.0f * k3_pos[i] + 125.0f / 192.0f * k4_pos[i] - 2187.0f / 6784.0f * k5_pos[i] + 11.0f / 84.0f * k6_pos[i] + 35.0f / 384.0f * k8_pos[i];
+            velocities[i] += 35.0f / 384.0f * k1_vel[i] + 500.0f / 1113.0f * k3_vel[i] + 125.0f / 192.0f * k4_vel[i] - 2187.0f / 6784.0f * k5_vel[i] + 11.0f / 84.0f * k6_vel[i] + 35.0f / 384.0f * k8_vel[i];
         }
     }
     public void CalculateAccelerations()
@@ -338,16 +343,16 @@ public class Gravity
                 deltaRVector = gameObjects[j].transform.position - gameObjects[i].transform.position;
                 if (deltaR < softeningScale)
                 {
-                    GravAccelerations[i] += (float)(G * masses[j] / Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
-                    LastAccelerations[i] += (float)(G * masses[j] / Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
-                    GravAccelerations[j] += (float)(-G * masses[i] / Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
-                    LastAccelerations[j] += (float)(-G * masses[i] / Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
+                    GravAccelerations[i] += (float)(G * masses[j] / System.Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
+                    LastAccelerations[i] += (float)(G * masses[j] / System.Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
+                    GravAccelerations[j] += (float)(-G * masses[i] / System.Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
+                    LastAccelerations[j] += (float)(-G * masses[i] / System.Math.Pow(softeningScale,2) / deltaR) * deltaRVector;
                 }
                 else{
-                    GravAccelerations[i] += (float)(G * masses[j] / Math.Pow(deltaR,3)) * deltaRVector;
-                    LastAccelerations[i] += (float)(G * masses[j] / Math.Pow(deltaR,3)) * deltaRVector;
-                    GravAccelerations[j] += (float)(-G * masses[i] / Math.Pow(deltaR,3)) * deltaRVector;
-                    LastAccelerations[j] += (float)(-G * masses[i] / Math.Pow(deltaR,3)) * deltaRVector;
+                    GravAccelerations[i] += (float)(G * masses[j] / System.Math.Pow(deltaR,3)) * deltaRVector;
+                    LastAccelerations[i] += (float)(G * masses[j] / System.Math.Pow(deltaR,3)) * deltaRVector;
+                    GravAccelerations[j] += (float)(-G * masses[i] / System.Math.Pow(deltaR,3)) * deltaRVector;
+                    LastAccelerations[j] += (float)(-G * masses[i] / System.Math.Pow(deltaR,3)) * deltaRVector;
                 }
                 
             }
@@ -366,10 +371,10 @@ public class Gravity
                 
                 deltaR = Vector3.Distance(gameObjects[j].transform.position, gameObjects[i].transform.position);
                 deltaRVector = gameObjects[j].transform.position - gameObjects[i].transform.position;
-                GravAccelerations[i] += (float)(G * masses[j] / Math.Pow(deltaR,3)) * deltaRVector;
-                LastAccelerations[i] += (float)(G * masses[j] / Math.Pow(deltaR,3)) * deltaRVector;
-                GravAccelerations[j] += (float)(-G * masses[i] / Math.Pow(deltaR,3)) * deltaRVector;
-                LastAccelerations[j] += (float)(-G * masses[i] / Math.Pow(deltaR,3)) * deltaRVector;
+                GravAccelerations[i] += (float)(G * masses[j] / System.Math.Pow(deltaR,3)) * deltaRVector;
+                LastAccelerations[i] += (float)(G * masses[j] / System.Math.Pow(deltaR,3)) * deltaRVector;
+                GravAccelerations[j] += (float)(-G * masses[i] / System.Math.Pow(deltaR,3)) * deltaRVector;
+                LastAccelerations[j] += (float)(-G * masses[i] / System.Math.Pow(deltaR,3)) * deltaRVector;
             }
         }
     }
