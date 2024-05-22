@@ -1,5 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
+using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 public class Gravity
@@ -104,6 +107,37 @@ public class Gravity
             BuildTree(node.Children[i], octantIndices[i]);
         }
     }
+    private void RecalculateCOM(OctreeNode node)
+    {
+        
+        int count = 0;
+        foreach(OctreeNode child in node.Children)
+        {
+            if (child != null)
+            {
+                if (count == 0)
+                {
+                    node.CenterOfMass = Vector3.zero;
+                    node.TotalMass = 0.0;
+                    count += 1;
+                }
+                RecalculateCOM(child);
+                node.TotalMass += child.TotalMass;
+                node.CenterOfMass += child.CenterOfMass * (float)child.TotalMass;
+            }
+        }
+        if (count > 0)
+        {
+            node.CenterOfMass /= (float)node.TotalMass;
+        }
+        else
+        {
+            node.CenterOfMass = gameObjects[node.ParticleIndices[0]].transform.position;
+            node.TotalMass = (float)masses[node.ParticleIndices[0]];
+        }
+        
+        return;
+    }
 
     private int GetOctant(Vector3 center, Vector3 position)
     {
@@ -132,7 +166,7 @@ public class Gravity
         }
         return;
     }
-    public void DoRK4(Vector3[] velocities, float dt)
+    public void DoRK4(Vector3[] velocities, float dt, int steps)
     {
         int n = gameObjects.Length;
         Vector3[] positions = new Vector3[n];
@@ -201,8 +235,18 @@ public class Gravity
             gameObjects[i].transform.position = positions[i] + (1.0f / 6.0f) * (k1_pos[i] + 2.0f * k2_pos[i] + 2.0f * k3_pos[i] + k4_pos[i]);
             velocities[i] += (1.0f / 6.0f) * (k1_vel[i] + 2.0f * k2_vel[i] + 2.0f * k3_vel[i] + k4_vel[i]);
         }
+        if (steps%60 < 59)
+        {
+            RecalculateCOM(root);
+        }
+        else
+        {
+            Debug.Log("Recalculating Tree");
+            root = new OctreeNode(root.BoundsMin, root.BoundsMax);
+            BuildTree(root, new List<int>(Enumerable.Range(0, gameObjects.Length)));
+        }
     }
-    public void DoDormandPrince(Vector3[] velocities, float dt)
+    public void DoDormandPrince(Vector3[] velocities, float dt, int steps)
     {
         int n = gameObjects.Length;
         Vector3[] positions = new Vector3[n];
@@ -325,7 +369,16 @@ public class Gravity
             gameObjects[i].transform.position = positions[i] + 35.0f / 384.0f * k1_pos[i] + 500.0f / 1113.0f * k3_pos[i] + 125.0f / 192.0f * k4_pos[i] - 2187.0f / 6784.0f * k5_pos[i] + 11.0f / 84.0f * k6_pos[i] + 35.0f / 384.0f * k8_pos[i];
             velocities[i] += 35.0f / 384.0f * k1_vel[i] + 500.0f / 1113.0f * k3_vel[i] + 125.0f / 192.0f * k4_vel[i] - 2187.0f / 6784.0f * k5_vel[i] + 11.0f / 84.0f * k6_vel[i] + 35.0f / 384.0f * k8_vel[i];
         }
-        BuildTree(root, new List<int>(Enumerable.Range(0, gameObjects.Length)));
+        if (steps%60 < 59)
+        {
+            RecalculateCOM(root);
+        }
+        else
+        {
+            Debug.Log("Recalculating Tree");
+            root = new OctreeNode(root.BoundsMin, root.BoundsMax);
+            BuildTree(root, new List<int>(Enumerable.Range(0, gameObjects.Length)));
+        }
     }
     public void CalculateAccelerations()
     {
@@ -361,9 +414,10 @@ public class Gravity
 
             // Opening criterion
             float openingCriterion = (float)(G * node.TotalMass * nodeRadius*nodeRadius / (distanceSq*distanceSq));
-            if (openingCriterion <= 0.0005f * LastAccelerations[particleIndex].magnitude)
+            if ((openingCriterion <= 0.0005f * LastAccelerations[particleIndex].magnitude) && (Mathf.Sqrt(distanceSq) > 1.2 * nodeRadius))
             {
                 // Use monopole approximation
+                Debug.Log("Used approximation");
                 acceleration += (float)(G * node.TotalMass / (distanceSq * Mathf.Sqrt(distanceSq))) * deltaR;
             }
             else

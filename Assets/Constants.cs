@@ -2,7 +2,7 @@ public static class Constants
 {
     public static double UnitMass_in_CGS = 2.0e33; // 1 Solar Mass
     public static double UnitLength_in_CGS = 1.5e13; // 1 AU
-    public static double UnitTime_in_CGS = 3.14e7 / 36.50; // 10day
+    public static double UnitTime_in_CGS = 3.14e7 / 36.50; // 10 day
     // Acceleration units will be pc/yr^2
     // Force units will be solar mass pc / yr^2
     // solar mass pc / yr^2 = G * solar mass^2 / pc^2

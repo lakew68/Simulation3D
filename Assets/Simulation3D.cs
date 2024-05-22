@@ -18,6 +18,7 @@ public class Simulation3D : MonoBehaviour
     GameObject[] spheres;
     GameObject sphere;
     int numSpheres;
+    int step;
     float maxVel;
     Vector3 minBounds;
     Vector3 maxBounds;
@@ -25,10 +26,11 @@ public class Simulation3D : MonoBehaviour
 
     void Start()
     {
-        numSpheres = 150;
+        numSpheres = 2;
         radius = 0.05f;
         mass = 1e-1;
-        maxVel = 0.3f;
+        step = 0;
+        maxVel = 0.02f;
         velocities = new Vector3[numSpheres];
         masses = new double[numSpheres];
         spheres = new GameObject[numSpheres];
@@ -39,7 +41,7 @@ public class Simulation3D : MonoBehaviour
 
         for (int i = 0; i < numSpheres; i++)
         {
-            position = new Vector3((float)Random.Range(minBounds.x, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (float)Random.Range(0.0f,0.0f)*Constants.initScale+ (minBounds.z+ maxBounds.z) * 0.5f);
+            position = new Vector3((float)Random.Range(minBounds.x, maxBounds.x)*Constants.initScale, (float)Random.Range(minBounds.y, maxBounds.y)*Constants.initScale, (minBounds.z+ maxBounds.z) * 0.5f);
             velocity = new Vector3((float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel), (float)Random.Range(-maxVel, maxVel));
             sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.position = position;
@@ -50,6 +52,7 @@ public class Simulation3D : MonoBehaviour
             spheres[i] = sphere;
         }
         masses[0] = 1.0;
+        masses[1] = 1e-3;
         spheres[0].transform.position = new Vector3(0.0f,0.0f,(minBounds.z+ maxBounds.z) * 0.5f);
         velocities[0] = new Vector3(0.0f,0.0f,0.0f);
         Material SunMaterial = new Material(Shader.Find("Standard"));
@@ -62,13 +65,14 @@ public class Simulation3D : MonoBehaviour
 
     void Update()
     {
-
-        g.DoDormandPrince(velocities,Time.deltaTime);
+        g.DoRK4(velocities,Time.deltaTime,step);
 
         for (int i = 0; i < numSpheres; i++)
         {
             CheckCollisions();
         }
+
+        step += 1;
     }
 
     void CheckCollisions()
@@ -100,7 +104,7 @@ public class Simulation3D : MonoBehaviour
             }
             else if (spheres[i].transform.position.y + radius > maxBounds.y)
             {
-                velocities[i].y = -velocities[i].y; // Invert X velocity
+                velocities[i].y = -velocities[i].y;
                 Vector3 newPosition = spheres[i].transform.position;
                 newPosition.y = 2.0f * (maxBounds.y - radius) - newPosition.y;
                 spheres[i].transform.position = newPosition;
@@ -114,7 +118,7 @@ public class Simulation3D : MonoBehaviour
             }
             else if (spheres[i].transform.position.z + radius > maxBounds.z)
             {
-                velocities[i].z = -velocities[i].z; // Invert X velocity
+                velocities[i].z = -velocities[i].z;
                 Vector3 newPosition = spheres[i].transform.position;
                 newPosition.z = 2.0f * (maxBounds.z - radius) - newPosition.z;
                 spheres[i].transform.position = newPosition;
